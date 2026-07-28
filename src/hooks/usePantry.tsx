@@ -28,6 +28,7 @@ import {
 } from '../lib/storage'
 import { notifyExpiring, requestNotificationPermission } from '../lib/notifications'
 import { daysUntilExpiry, estimateExpiry, getExpiryStatus, guessCategory, sortByExpiry } from '../lib/expiry'
+import { findPantryMatch } from '../lib/groceryMatch'
 import { getSessionEmail, isSyncConfigured, syncPush } from '../lib/sync'
 
 interface PantryContextValue {
@@ -40,6 +41,8 @@ interface PantryContextValue {
   shopCount: number
   expiringCount: number
   addItems: (items: Omit<PantryItem, 'id' | 'updatedAt'>[]) => void
+  /** Add groceries; bump qty when the same item is already in the pantry. */
+  addOrMergeItems: (items: Omit<PantryItem, 'id' | 'updatedAt'>[]) => { added: number; merged: number }
   updateItem: (id: string, patch: Partial<PantryItem>) => void
   finishItem: (id: string, outcome: WasteOutcome, restock?: boolean) => void
   clearExpired: (outcome: WasteOutcome) => void
@@ -48,6 +51,7 @@ interface PantryContextValue {
   removeShopping: (id: string) => void
   clearCheckedShopping: () => void
   buyShoppingToPantry: () => void
+  markShoppingBought: (names: string[]) => void
   setSettings: (patch: Partial<AppSettings>) => Promise<void>
   exportData: () => SyncSnapshot
   importData: (snapshot: SyncSnapshot) => void
@@ -89,11 +93,66 @@ export function PantryProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    void refreshSession()
+    // Don't block first paint — refresh auth after idle
+    const t = window.setTimeout(() => {
+      void refreshSession()
+    }, 0)
+    return () => window.clearTimeout(t)
   }, [refreshSession])
 
   const addItems = useCallback((incoming: Omit<PantryItem, 'id' | 'updatedAt'>[]) => {
     setItems((prev) => [...incoming.map((i) => createItem(i)), ...prev])
+  }, [])
+
+  const addOrMergeItems = useCallback((incoming: Omit<PantryItem, 'id' | 'updatedAt'>[]) => {
+    let added = 0
+    let merged = 0
+    setItems((prev) => {
+      const next = [...prev]
+      const indexByName = new Map(next.map((item, i) => [item.name.toLowerCase(), i]))
+      for (const raw of incoming) {
+        const names = next.map((i) => i.name)
+        const matchName = findPantryMatch(raw.name, names)
+        if (matchName) {
+          const idx =
+            indexByName.get(matchName.toLowerCase()) ??
+            next.findIndex((i) => i.name === matchName)
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              quantity: next[idx].quantity + raw.quantity,
+              expiresAt: raw.expiresAt || next[idx].expiresAt,
+              purchasedAt: raw.purchasedAt || next[idx].purchasedAt,
+              updatedAt: nowIso(),
+              source: raw.source ?? next[idx].source,
+              barcode: raw.barcode ?? next[idx].barcode,
+            }
+            merged++
+            continue
+          }
+        }
+        const created = createItem(raw)
+        next.unshift(created)
+        // shift indexes after unshift
+        for (const [k, v] of indexByName) indexByName.set(k, v + 1)
+        indexByName.set(created.name.toLowerCase(), 0)
+        added++
+      }
+      return next
+    })
+    return { added, merged }
+  }, [])
+
+  const markShoppingBought = useCallback((names: string[]) => {
+    setShopping((prev) =>
+      prev.map((item) => {
+        const hit = findPantryMatch(
+          item.name,
+          names,
+        )
+        return hit ? { ...item, checked: true } : item
+      }),
+    )
   }, [])
 
   const updateItem = useCallback((id: string, patch: Partial<PantryItem>) => {
@@ -269,6 +328,7 @@ export function PantryProvider({ children }: { children: ReactNode }) {
       shopCount,
       expiringCount,
       addItems,
+      addOrMergeItems,
       updateItem,
       finishItem,
       clearExpired,
@@ -277,6 +337,7 @@ export function PantryProvider({ children }: { children: ReactNode }) {
       removeShopping,
       clearCheckedShopping,
       buyShoppingToPantry,
+      markShoppingBought,
       setSettings,
       exportData,
       importData,
@@ -292,6 +353,7 @@ export function PantryProvider({ children }: { children: ReactNode }) {
       shopCount,
       expiringCount,
       addItems,
+      addOrMergeItems,
       updateItem,
       finishItem,
       clearExpired,
@@ -300,6 +362,7 @@ export function PantryProvider({ children }: { children: ReactNode }) {
       removeShopping,
       clearCheckedShopping,
       buyShoppingToPantry,
+      markShoppingBought,
       setSettings,
       exportData,
       importData,

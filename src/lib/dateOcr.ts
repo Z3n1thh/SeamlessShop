@@ -1,5 +1,5 @@
-import { createWorker } from 'tesseract.js'
 import { addDays, format, isValid, parse } from 'date-fns'
+import { recognizeText } from './ocr'
 
 const DATE_PATTERNS: { re: RegExp; fmt: string }[] = [
   { re: /\b(\d{4}[./-]\d{1,2}[./-]\d{1,2})\b/, fmt: 'yyyy-M-d' },
@@ -25,7 +25,6 @@ export function extractExpiryFromText(text: string): string | null {
     if (found) return found
   }
 
-  // Fallback: any date in the next 2 years window
   for (const line of lines) {
     const found = parseDateCandidate(line)
     if (found) {
@@ -41,19 +40,8 @@ export async function scanPackageForExpiry(
   image: File | Blob,
   onProgress?: (pct: number) => void,
 ): Promise<{ text: string; expiresAt: string | null }> {
-  const worker = await createWorker('eng', 1, {
-    logger: (m) => {
-      if (m.status === 'recognizing text' && typeof m.progress === 'number') {
-        onProgress?.(Math.round(m.progress * 100))
-      }
-    },
-  })
-  try {
-    const { data } = await worker.recognize(image)
-    return { text: data.text, expiresAt: extractExpiryFromText(data.text) }
-  } finally {
-    await worker.terminate()
-  }
+  const text = await recognizeText(image, onProgress)
+  return { text, expiresAt: extractExpiryFromText(text) }
 }
 
 function parseDateCandidate(text: string): string | null {

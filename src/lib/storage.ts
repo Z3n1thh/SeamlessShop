@@ -12,6 +12,7 @@ export interface AppSettings {
   householdId: string
   householdName: string
   householdInvite: string
+  theme: 'light' | 'dark' | 'system'
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -21,6 +22,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   householdId: '',
   householdName: '',
   householdInvite: '',
+  theme: 'system',
 }
 
 export function uid(): string {

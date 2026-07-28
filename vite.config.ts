@@ -4,6 +4,28 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: process.env.GITHUB_PAGES === 'true' ? '/SeamlessShop/' : '/',
+  build: {
+    target: 'es2022',
+    cssMinify: true,
+    modulePreload: {
+      resolveDependencies: (_filename, deps) =>
+        // Don't preload heavy OCR/barcode chunks on first paint
+        deps.filter((d) => !/tesseract|html5-qrcode|ScanView|ocr/i.test(d)),
+    },
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/tesseract.js')) return 'ocr'
+          if (id.includes('node_modules/html5-qrcode')) return 'barcode'
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+            return 'react'
+          }
+          if (id.includes('node_modules/@supabase')) return 'supabase'
+          if (id.includes('node_modules/date-fns')) return 'dates'
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -28,7 +50,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,ico,woff2}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/www\.themealdb\.com\/.*/i,
@@ -52,6 +74,14 @@ export default defineConfig({
             options: {
               cacheName: 'google-fonts-cache',
               expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-files',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
         ],

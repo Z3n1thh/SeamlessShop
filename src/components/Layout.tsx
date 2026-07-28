@@ -1,5 +1,6 @@
 import type { AppView } from '../types'
 import { usePantry } from '../hooks/usePantry'
+import { useTheme } from '../hooks/useTheme'
 
 const NAV: { id: AppView; label: string; icon: string }[] = [
   { id: 'pantry', label: 'Pantry', icon: '▣' },
@@ -17,15 +18,34 @@ interface LayoutProps {
 
 export function Layout({ view, onNavigate, children }: LayoutProps) {
   const { expiringCount, shopCount } = usePantry()
+  const { theme, resolved, cycleTheme } = useTheme()
+
+  const themeLabel =
+    theme === 'system' ? `Auto (${resolved})` : theme === 'dark' ? 'Dark' : 'Light'
 
   return (
     <div className="app-shell">
       <div className="atmosphere" aria-hidden="true" />
+      <div className="glow glow-a" aria-hidden="true" />
+      <div className="glow glow-b" aria-hidden="true" />
+
       <header className="topbar">
         <div className="brand-block">
           <p className="brand">SeamlessShop</p>
           <p className="brand-tag">Know what’s in your kitchen</p>
         </div>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={cycleTheme}
+          aria-label={`Theme: ${themeLabel}. Click to change.`}
+          title={themeLabel}
+        >
+          <span className="theme-toggle-icon" aria-hidden="true">
+            {resolved === 'dark' ? '☾' : '☀'}
+          </span>
+          <span className="theme-toggle-label">{theme === 'system' ? 'Auto' : themeLabel}</span>
+        </button>
       </header>
 
       <main className="main-panel">{children}</main>

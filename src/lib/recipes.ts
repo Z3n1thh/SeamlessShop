@@ -15,21 +15,12 @@ interface MealDbList {
 }
 
 const STOP = new Set([
-  'a',
-  'an',
-  'the',
-  'and',
-  'or',
-  'of',
-  'with',
-  'fresh',
-  'organic',
-  'whole',
-  'raw',
-  'large',
-  'small',
-  'extra',
+  'a', 'an', 'the', 'and', 'or', 'of', 'with', 'fresh', 'organic', 'whole', 'raw', 'large', 'small', 'extra',
 ])
+
+const cache = new Map<string, { at: number; recipes: Recipe[] }>()
+const CACHE_MS = 5 * 60 * 1000
+const detailCache = new Map<string, MealDbMeal>()
 
 function tokens(name: string): string[] {
   return name
@@ -54,7 +45,6 @@ function matchScore(pantryTokens: string[], ingredient: string): boolean {
   return ingTokens.some((t) => pantryTokens.some((p) => p.includes(t) || t.includes(p)))
 }
 
-/** Local fallback recipes when offline / API unavailable. */
 const LOCAL_RECIPES: Omit<Recipe, 'matched' | 'missing'>[] = [
   {
     id: 'local-1',
@@ -92,8 +82,7 @@ const LOCAL_RECIPES: Omit<Recipe, 'matched' | 'missing'>[] = [
     title: 'Simple Pasta Night',
     image: '',
     ingredients: ['pasta', 'garlic', 'oil', 'cheese', 'tomato'],
-    instructions:
-      'Boil pasta. Warm garlic in oil, toss with pasta, tomatoes, and grated cheese.',
+    instructions: 'Boil pasta. Warm garlic in oil, toss with pasta, tomatoes, and grated cheese.',
   },
 ]
 
@@ -114,50 +103,66 @@ function scoreRecipe(
   return { matched, missing, score }
 }
 
+function cacheKey(pantry: PantryItem[]): string {
+  return pantry
+    .map((p) => p.name.toLowerCase())
+    .sort()
+    .join('|')
+}
+
+async function fetchMealDetail(id: string): Promise<MealDbMeal | null> {
+  const cached = detailCache.get(id)
+  if (cached) return cached
+  const detailRes = await fetch(`https://www.themealdb.com/api/json/v1/1/lookup.php?i=${id}`)
+  if (!detailRes.ok) return null
+  const detail = (await detailRes.json()) as MealDbList
+  const meal = detail.meals?.[0]
+  if (meal) detailCache.set(id, meal)
+  return meal ?? null
+}
+
 export async function suggestRecipes(pantry: PantryItem[]): Promise<Recipe[]> {
   if (!pantry.length) return []
 
-  const primary = pantry
-    .map((p) => tokens(p.name)[0])
-    .filter(Boolean)
-    .slice(0, 6)
+  const key = cacheKey(pantry)
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.recipes
 
+  const primary = [...new Set(pantry.map((p) => tokens(p.name)[0]).filter(Boolean))].slice(0, 3)
   const collected = new Map<string, Recipe>()
 
   try {
-    await Promise.all(
+    // Fewer parallel filter calls → snappier Cook tab
+    const filterResults = await Promise.all(
       primary.map(async (term) => {
         const res = await fetch(
           `https://www.themealdb.com/api/json/v1/1/filter.php?i=${encodeURIComponent(term)}`,
         )
-        if (!res.ok) return
+        if (!res.ok) return [] as MealDbMeal[]
         const data = (await res.json()) as MealDbList
-        const meals = data.meals?.slice(0, 4) ?? []
-        await Promise.all(
-          meals.map(async (m) => {
-            if (collected.has(m.idMeal)) return
-            const detailRes = await fetch(
-              `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${m.idMeal}`,
-            )
-            if (!detailRes.ok) return
-            const detail = (await detailRes.json()) as MealDbList
-            const meal = detail.meals?.[0]
-            if (!meal) return
-            const ingredients = mealIngredients(meal)
-            const { matched, missing, score } = scoreRecipe(pantry, ingredients)
-            if (score < 0.25 && matched.length < 2) return
-            collected.set(meal.idMeal, {
-              id: meal.idMeal,
-              title: meal.strMeal,
-              image: meal.strMealThumb,
-              ingredients,
-              matched,
-              missing,
-              instructions: meal.strInstructions ?? '',
-              sourceUrl: meal.strSource || meal.strYoutube || undefined,
-            })
-          }),
-        )
+        return data.meals?.slice(0, 3) ?? []
+      }),
+    )
+
+    const uniqueIds = [...new Set(filterResults.flat().map((m) => m.idMeal))].slice(0, 8)
+
+    await Promise.all(
+      uniqueIds.map(async (id) => {
+        const meal = await fetchMealDetail(id)
+        if (!meal) return
+        const ingredients = mealIngredients(meal)
+        const { matched, missing, score } = scoreRecipe(pantry, ingredients)
+        if (score < 0.25 && matched.length < 2) return
+        collected.set(meal.idMeal, {
+          id: meal.idMeal,
+          title: meal.strMeal,
+          image: meal.strMealThumb,
+          ingredients,
+          matched,
+          missing,
+          instructions: meal.strInstructions ?? '',
+          sourceUrl: meal.strSource || meal.strYoutube || undefined,
+        })
       }),
     )
   } catch {
@@ -173,12 +178,12 @@ export async function suggestRecipes(pantry: PantryItem[]): Promise<Recipe[]> {
     }
   }
 
-  return [...collected.values()]
-    .map((r) => {
-      const { score } = scoreRecipe(pantry, r.ingredients)
-      return { recipe: r, score }
-    })
+  const recipes = [...collected.values()]
+    .map((r) => ({ recipe: r, score: scoreRecipe(pantry, r.ingredients).score }))
     .sort((a, b) => b.score - a.score || b.recipe.matched.length - a.recipe.matched.length)
-    .slice(0, 12)
+    .slice(0, 10)
     .map((x) => x.recipe)
+
+  cache.set(key, { at: Date.now(), recipes })
+  return recipes
 }

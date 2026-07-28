@@ -2,12 +2,14 @@
 
 Smart pantry tracker that helps you stop forgetting — and tossing — groceries.
 
+**License:** [MIT](./LICENSE) · **Third-party credits & API terms:** [ATTRIBUTIONS.md](./ATTRIBUTIONS.md)
+
 ## Features
 
 - **Pantry tracker** — quantities, categories, expiry dates
 - **Scan** — receipt OCR, barcode lookup (Open Food Facts), package date OCR
 - **Shopping list** — restock finished items; add missing recipe ingredients
-- **Cook** — meals matched to what’s in your kitchen
+- **Cook** — meals matched to what’s in your kitchen (TheMealDB)
 - **Alerts** — expiring soon + optional browser notifications
 - **Waste insights** — used vs thrown over the last 30 days
 - **Sync** — optional Supabase cloud sync + JSON backup import/export
@@ -15,12 +17,14 @@ Smart pantry tracker that helps you stop forgetting — and tossing — grocerie
 
 ## Stack (free & open source)
 
-- React + TypeScript + Vite + vite-plugin-pwa
-- Tesseract.js (on-device OCR)
-- html5-qrcode (barcode camera)
-- Open Food Facts + TheMealDB (free APIs, no keys)
-- Supabase free tier (optional sync)
-- LocalStorage (always works offline)
+- React + TypeScript + Vite + vite-plugin-pwa (MIT)
+- Tesseract.js (Apache-2.0) — on-device OCR
+- html5-qrcode (Apache-2.0) — barcode camera
+- Open Food Facts (ODbL data) + TheMealDB (free recipe API)
+- Supabase JS client (MIT) + optional Supabase Free hosting (their ToS)
+- date-fns (MIT), Fraunces & Manrope fonts (OFL)
+
+Full attribution table: [ATTRIBUTIONS.md](./ATTRIBUTIONS.md).
 
 ## Run locally
 
@@ -61,5 +65,13 @@ npx vercel --prod
 
 - Receipt OCR works best with clear photos; always confirm items before saving.
 - Package-date mode looks for “best before / use by / exp” stamps.
-- Barcode data comes from Open Food Facts community database.
+- Barcode data comes from Open Food Facts contributors (please keep attribution).
+- Recipe suggestions credit TheMealDB.
 - Notifications need browser permission and work best when installed as a PWA.
+
+## Legal / compliance note
+
+`LICENSE` and `ATTRIBUTIONS.md` document this project’s license and third-party
+sources for transparency. They are **not a substitute for legal advice**. If you
+publish or commercialize the app, review Open Food Facts, TheMealDB, Supabase,
+and your host’s current terms yourself.
